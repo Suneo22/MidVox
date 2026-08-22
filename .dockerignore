@@ -1,0 +1,13 @@
+.git
+.github
+opencode.tar.gz
+*.tar.gz
+dashboard/node_modules
+dashboard/.next
+dashboard/.env.local
+bot/.venv
+bot/__pycache__
+**/__pycache__
+.env
+*.log
+*.db
