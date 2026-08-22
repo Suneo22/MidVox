@@ -17,13 +17,15 @@
 "use client";
 
 import React, { useState } from "react";
-import { 
+import {
   MessageSquare,
   UserPlus,
   ShieldAlert,
   Mic,
   Settings,
   Hash,
+  Sticker,
+  ServerCog,
   ChevronRight,
   BellRing,
   Info
@@ -43,6 +45,9 @@ const LOG_CATEGORIES = [
   { id: "voice_events", name: "Voice Events", icon: Mic, description: "Track members joining, leaving, or moving voice channels." },
   { id: "role_events", name: "Role Changes", icon: Settings, description: "Log role creation, deletion, and permission updates." },
   { id: "channel_events", name: "Channel Changes", icon: Hash, description: "Track channel creation, deletion, and settings updates." },
+  { id: "emoji_events", name: "Emoji Events", icon: Sticker, description: "Log emoji and sticker creation, deletion, and updates." },
+  { id: "reaction_events", name: "Reaction Events", icon: MessageSquare, description: "Track reactions being added or removed on messages." },
+  { id: "system_events", name: "System Events", icon: ServerCog, description: "Log audit and system-level changes like webhook and integration updates." },
 ];
 
 interface LoggingFormProps {

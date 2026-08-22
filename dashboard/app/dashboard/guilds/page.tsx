@@ -12,6 +12,11 @@ import { Button } from "@/components/ui/button";
 
 const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
+const CLIENT_ID = process.env.NEXT_PUBLIC_DISCORD_CLIENT_ID || "";
+const BOT_INVITE = CLIENT_ID
+  ? `https://discord.com/oauth2/authorize?client_id=${CLIENT_ID}&permissions=8&scope=bot+applications.commands`
+  : "https://discord.com/oauth2/authorize";
+
 export default function GuildsPage() {
   const { data: session, status } = useSession();
   const [botGuilds, setBotGuilds] = useState<any[]>([]);
@@ -217,7 +222,7 @@ export default function GuildsPage() {
 
             {/* Invite card */}
             <motion.a
-              href="https://discord.com/oauth2/authorize"
+              href={BOT_INVITE}
               target="_blank"
               rel="noopener noreferrer"
               initial={{ opacity: 0, y: 16 }}
