@@ -467,57 +467,74 @@ class InstaDownloader(commands.Cog):
         except Exception as e:
             print(f"[InstaDL] cleanup error: {e}")
 
+    def _cobalt_instances(self):
+        """Cobalt API endpoints tried in order. Override with COBALT_API_URL
+        (comma-separated). Public community instances need no API key."""
+        raw = os.getenv("COBALT_API_URL", "").strip()
+        if raw:
+            return [e.strip().rstrip("/") for e in raw.split(",") if e.strip()]
+        return [
+            "https://co.otomir23.me",
+            "https://cobalt-api.kwiatekmiki.com",
+        ]
+
     def _cobalt_download(self, url):
-        """Download media through the cobalt API — it extracts on its own
-        (clean) infrastructure, so Render's flagged datacenter IP never
-        matters. Returns a temp file path or None."""
+        """Download media through a cobalt API instance — extraction happens
+        on the instance's own infrastructure, so datacenter-IP blocks never
+        matter. Works without an API key; set COBALT_API_KEY only if your
+        instance requires one."""
         key = os.getenv("COBALT_API_KEY", "").strip()
-        if not key:
-            return None
-        try:
-            body = json.dumps({"url": url, "videoQuality": 2160}).encode()
-            req = urllib.request.Request(
-                "https://api.cobalt.tools/api/json",
-                data=body,
-                method="POST",
-                headers={
-                    "Accept": "application/json",
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {key}",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
-                },
-            )
-            with urllib.request.urlopen(req, timeout=40) as resp:
-                data = json.loads(resp.read().decode("utf-8", "replace"))
-            if not isinstance(data, dict):
-                return None
-            status = data.get("status")
-            if status not in ("redirect", "tunnel") or not data.get("url"):
-                print(f"[InstaDL] cobalt error: {data.get('error') or data.get('status')}")
-                return None
-            dreq = urllib.request.Request(
-                data["url"],
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                    "Authorization": f"Bearer {key}",
-                    "Range": "bytes=0-25165823",
-                },
-            )
-            with urllib.request.urlopen(dreq, timeout=120) as resp:
-                media = resp.read()
-            if not media:
-                return None
-            if len(media) > 25 * 1024 * 1024:
-                print(f"[InstaDL] cobalt media too big ({len(media)} bytes)")
-                return None
-            path = os.path.join(tempfile.gettempdir(), f"cobalt_{int(time.time())}.mp4")
-            with open(path, "wb") as f:
-                f.write(media)
-            print(f"[InstaDL] cobalt download OK: {len(media)} bytes")
-            return path
-        except Exception as e:
-            print(f"[InstaDL] cobalt download failed: {e}")
-            return None
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36",
+        }
+        if key:
+            headers["Authorization"] = f"Api-Key {key}"
+        for endpoint in self._cobalt_instances():
+            try:
+                body = json.dumps({"url": url, "videoQuality": "2160"}).encode()
+                req = urllib.request.Request(
+                    endpoint,
+                    data=body,
+                    method="POST",
+                    headers=headers,
+                )
+                with urllib.request.urlopen(req, timeout=40) as resp:
+                    data = json.loads(resp.read().decode("utf-8", "replace"))
+                if not isinstance(data, dict):
+                    continue
+                status = data.get("status")
+                media_url = None
+                if status in ("redirect", "tunnel") and data.get("url"):
+                    media_url = data["url"]
+                elif status == "picker" and isinstance(data.get("picker"), list) and data["picker"]:
+                    first = data["picker"][0]
+                    media_url = first.get("url") if isinstance(first, dict) else None
+                if not media_url:
+                    print(f"[InstaDL] cobalt error ({endpoint}): {data.get('error') or status}")
+                    continue
+                dreq = urllib.request.Request(
+                    media_url,
+                    headers={"User-Agent": headers["User-Agent"]},
+                )
+                cap = 25 * 1024 * 1024
+                with urllib.request.urlopen(dreq, timeout=120) as resp:
+                    media = resp.read(cap + 1)
+                if not media:
+                    continue
+                if len(media) > cap:
+                    print(f"[InstaDL] cobalt media too big ({len(media)} bytes)")
+                    return None
+                path = os.path.join(tempfile.gettempdir(), f"cobalt_{int(time.time())}.mp4")
+                with open(path, "wb") as f:
+                    f.write(media)
+                print(f"[InstaDL] cobalt download OK via {endpoint}: {len(media)} bytes")
+                return path
+            except Exception as e:
+                print(f"[InstaDL] cobalt download failed ({endpoint}): {e}")
+                continue
+        return None
 
     async def _download_and_send(self, message, url, config, source="instagram"):
         """Optionally delete the user's link message immediately, show an
@@ -570,8 +587,9 @@ class InstaDownloader(commands.Cog):
         loop = asyncio.get_running_loop()
         file_path = None
 
-        if source == "youtube":
-            file_path = await loop.run_in_executor(None, self._cobalt_download, url)
+        # Cobalt first — fast and immune to datacenter-IP blocks; yt-dlp
+        # (with cookies/WARP) is the fallback.
+        file_path = await loop.run_in_executor(None, self._cobalt_download, url)
 
         if not file_path:
             try:
